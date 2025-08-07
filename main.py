@@ -216,7 +216,7 @@ class EmailViewer(QtWidgets.QMainWindow, Ui_MainWindow):
                 self, "Error", 
                 f"Failed to open .msg file:\n{str(e)}")
             
-    def create_email_copy(self):
+    def create_email_copy11(self):
         if not self.current_msg_path:
             return
 
@@ -225,13 +225,10 @@ class EmailViewer(QtWidgets.QMainWindow, Ui_MainWindow):
             original_path = self.current_msg_path
             Path(r"C:\Temp\mail_temp").mkdir(parents=True, exist_ok= True)
             move_path = Path(r"C:\Temp\mail_temp") / original_path.name
-
             # Move file
             shutil.move(original_path, move_path)
-
             # Copy the moved file back to the original folder with the same name
             save_path = original_path
-
             # Copy file
             shutil.copy2(move_path, save_path)
 
@@ -258,7 +255,84 @@ class EmailViewer(QtWidgets.QMainWindow, Ui_MainWindow):
                 self, "Error",
                 f"Failed to create email copy:\n{str(e)}"
             )
-            
+    
+    def create_email_copy(self):
+        if not self.current_msg_path:
+            return
+
+        try:
+            outlook = win32.Dispatch("Outlook.Application")
+            namespace = outlook.GetNamespace("MAPI")
+            msg_item = namespace.OpenSharedItem(str(self.current_msg_path))
+
+            # Check if it's a draft (not sent)
+            is_draft = not hasattr(msg_item, "SentOn") or not msg_item.SentOn
+
+            if is_draft:
+                # Move the .msg file to temp_folder
+                original_path = self.current_msg_path
+                Path(r"C:\Temp\mail_temp").mkdir(parents=True, exist_ok= True)
+                move_path = Path(r"C:\Temp\mail_temp") / original_path.name
+                # Move file
+                shutil.move(original_path, move_path)
+                # Copy the moved file back to the original folder with the same name
+                save_path = original_path
+                # Copy file
+                shutil.copy2(move_path, save_path)
+
+                # Show success message
+                QtWidgets.QMessageBox.information(
+                    self, "Success",
+                    f"A copy of the email has been created and opened in Outlook."
+                )
+
+                # Open the moved file with Outlook
+                try:
+                    outlook = win32.Dispatch("Outlook.Application")
+                    namespace = outlook.GetNamespace("MAPI")
+                    item = namespace.OpenSharedItem(str(move_path))
+                    item.Display()  # Open the email in a new window for editing
+                except Exception as e:
+                    QtWidgets.QMessageBox.warning(
+                        self, "Warning",
+                        f"File moved but failed to open in Outlook:\n{str(e)}"
+                    )
+            else:
+                # Sent or received mail: clone by creating a new mail item
+                new_mail = outlook.CreateItem(0)  # olMailItem
+
+                # Clone header
+                new_mail.Subject = msg_item.Subject
+                new_mail.To = msg_item.To
+                new_mail.CC = msg_item.CC
+                new_mail.BCC = msg_item.BCC
+
+                # Clone content (prefer HTMLBody)
+                if hasattr(msg_item, "HTMLBody") and msg_item.HTMLBody:
+                    new_mail.HTMLBody = msg_item.HTMLBody
+                else:
+                    new_mail.Body = msg_item.Body
+
+                # Clone attachments
+                for i in range(msg_item.Attachments.Count):
+                    att = msg_item.Attachments.Item(i+1)
+                    temp_path = str(Path(r"C:\Temp\mail_temp") / att.FileName)
+                    att.SaveAsFile(temp_path)
+                    new_mail.Attachments.Add(temp_path)
+
+                QtWidgets.QMessageBox.information(
+                    self, "Success",
+                    "A copy of the email has been created and opened in Outlook."
+                )
+                new_mail.Display()
+
+            msg_item.Close(0)
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self, "Error",
+                f"Error while creating the email copy:\n{str(e)}"
+            )
+
     def escape_html(self, text):
         if not text:
             return ""
